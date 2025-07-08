@@ -16,7 +16,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Configure Google Generative AI
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel('gemini-2.0-flash-exp')
 
 # Initialize Rouge scorer
@@ -55,38 +55,20 @@ def generate_feedback(student_answer, model_answer, bleu_score, rouge_scores):
     """Generate feedback using Google Gemini"""
     try:
         prompt = f"""
-        As a supportive educational assistant, provide constructive and encouraging feedback for a student's answer.
+        Provide brief, concise feedback for a student's answer. Keep it SHORT and direct.
         
         Student's Answer: {student_answer}
         Model Answer: {model_answer}
-        BLEU Score: {bleu_score:.3f} (0.0 = no similarity, 1.0 = perfect match)
-        ROUGE-1 Score: {rouge_scores['rouge-1']:.3f}
-        ROUGE-2 Score: {rouge_scores['rouge-2']:.3f}
-        ROUGE-L Score: {rouge_scores['rouge-l']:.3f}
+        Scores: BLEU={bleu_score:.3f}, ROUGE-1={rouge_scores['rouge-1']:.3f}
         
-        Please provide detailed feedback in the following format:
+        Give feedback in this EXACT format (maximum 3-4 sentences total):
         
-        **Strengths & Achievements:**
-        - Acknowledge what the student did well
-        - Highlight correct concepts or approaches
-        - Recognize effort and understanding shown
+        **Correct:** [What student got right - 1 sentence]
+        **Missing:** [Key points student missed - 1 sentence]  
+        **Grade:** [A/B/C/D/F with brief reason - 1 sentence]
+        **Tip:** [One actionable improvement - 1 sentence]
         
-        **Areas for Enhancement:**
-        - Identify key concepts that could be expanded
-        - Point out missing important elements
-        - Suggest specific improvements
-        
-        **Learning Recommendations:**
-        - Provide actionable study suggestions
-        - Recommend resources or practice areas
-        - Give tips for better answer structure
-        
-        **Overall Assessment:**
-        - Encouraging summary of performance
-        - Grade suggestion (A, B, C, D, F) with justification
-        - Motivational closing statement
-        
-        Keep the tone positive, constructive, and focused on learning growth.
+        Be concise and direct. No lengthy explanations.
         """
         
         response = model.generate_content(prompt)
@@ -157,6 +139,6 @@ def grade_answer():
 if __name__ == '__main__':
     # Check if required environment variables are set
     if not os.getenv("GEMINI_API_KEY"):
-        print("Warning: GOOGLE_API_KEY not found in environment variables")
-    
+        print("Warning: GEMINI_API_KEY not found in environment variables")
+
     app.run(debug=True, host='0.0.0.0', port=5000)
