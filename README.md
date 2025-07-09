@@ -66,9 +66,14 @@ The API will start on `http://localhost:5000`
   ```json
   {
     "student_answer": "Your student's answer here",
-    "model_answer": "The correct/expected answer here"
+    "model_answer": "The correct/expected answer here",
+    "use_bert": true
   }
   ```
+  **Parameters:**
+  - `student_answer` (required): The student's response
+  - `model_answer` (required): The expected/correct answer  
+  - `use_bert` (optional): Set to `false` for faster processing without BERTScore (default: `true`)
 - **Response**:
   ```json
   {
