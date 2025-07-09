@@ -7,6 +7,7 @@ from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from rouge import Rouge
 import nltk
 from datetime import datetime
+from bert_score import score
 
 # Load environment variables
 load_dotenv()
@@ -21,6 +22,17 @@ model = genai.GenerativeModel('gemini-2.0-flash-exp')
 
 # Initialize Rouge scorer
 rouge = Rouge()
+
+# Initialize BERTScore model once at startup (faster)
+bert_scorer = None
+try:
+    from bert_score import BERTScorer
+    # Use a smaller, faster model
+    bert_scorer = BERTScorer(model_type="distilbert-base-uncased", num_layers=5)
+    print("BERTScore model loaded successfully!")
+except Exception as e:
+    print(f"Warning: Could not load BERTScore model: {e}")
+    bert_scorer = None
 
 # Download NLTK data if needed
 try:
@@ -51,24 +63,37 @@ def calculate_rouge(reference, candidate):
     except Exception as e:
         return {'rouge-1': 0.0, 'rouge-2': 0.0, 'rouge-l': 0.0}
 
-def generate_feedback(student_answer, model_answer, bleu_score, rouge_scores):
+def calculate_bert_score(reference, candidate):
+    """Calculate BERTScore between reference and candidate texts - Fast version"""
+    try:
+        if bert_scorer is None:
+            return 0.0
+        
+        # Use pre-loaded scorer (much faster)
+        P, R, F1 = bert_scorer.score([candidate], [reference])
+        return float(F1[0])
+    except Exception as e:
+        print(f"BERTScore error: {e}")
+        return 0.0
+
+def generate_feedback(student_answer, model_answer, bleu_score, rouge_scores, bert_score):
     """Generate feedback using Google Gemini"""
     try:
         prompt = f"""
-        Provide brief, concise feedback for a student's answer. Keep it SHORT and direct.
+        You are an experienced teacher. Give brief and clear feedback for the student's answer in plain English.
         
         Student's Answer: {student_answer}
         Model Answer: {model_answer}
-        Scores: BLEU={bleu_score:.3f}, ROUGE-1={rouge_scores['rouge-1']:.3f}
+        Evaluation Scores: BLEU={bleu_score:.3f}, ROUGE-1={rouge_scores['rouge-1']:.3f}, BERTScore={bert_score:.3f}
         
-        Give feedback in this EXACT format (maximum 3-4 sentences total):
+        Write your evaluation naturally and simply, without any special formatting or symbols:
         
-        **Correct:** [What student got right - 1 sentence]
-        **Missing:** [Key points student missed - 1 sentence]  
-        **Grade:** [A/B/C/D/F with brief reason - 1 sentence]
-        **Tip:** [One actionable improvement - 1 sentence]
+        First, mention what the student did correctly.
+        Second, mention the important points they missed.
+        Third, give a grade from A to F with a brief reason.
+        Fourth, give one helpful tip for improvement.
         
-        Be concise and direct. No lengthy explanations.
+        Do not use any symbols or formatting marks, just plain clear text.
         """
         
         response = model.generate_content(prompt)
@@ -106,6 +131,7 @@ def grade_answer():
         
         student_answer = data.get('student_answer', '').strip()
         model_answer = data.get('model_answer', '').strip()
+        use_bert = data.get('use_bert', True)  # Option to disable BERTScore for speed
         
         if not student_answer or not model_answer:
             return jsonify({"error": "Both student_answer and model_answer are required"}), 400
@@ -114,8 +140,13 @@ def grade_answer():
         bleu_score = calculate_bleu(model_answer, student_answer)
         rouge_scores = calculate_rouge(model_answer, student_answer)
         
+        # Only calculate BERTScore if requested and model is available
+        bert_score = 0.0
+        if use_bert and bert_scorer is not None:
+            bert_score = calculate_bert_score(model_answer, student_answer)
+        
         # Generate feedback
-        feedback = generate_feedback(student_answer, model_answer, bleu_score, rouge_scores)
+        feedback = generate_feedback(student_answer, model_answer, bleu_score, rouge_scores, bert_score)
         
         # Prepare response
         response = {
@@ -125,7 +156,8 @@ def grade_answer():
                 "bleu": round(bleu_score, 4),
                 "rouge-1": round(rouge_scores['rouge-1'], 4),
                 "rouge-2": round(rouge_scores['rouge-2'], 4),
-                "rouge-l": round(rouge_scores['rouge-l'], 4)
+                "rouge-l": round(rouge_scores['rouge-l'], 4),
+                "bert_score": round(bert_score, 4)
             },
             "feedback": feedback,
             "timestamp": datetime.now().isoformat()
